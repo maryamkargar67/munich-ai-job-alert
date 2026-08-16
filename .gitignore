@@ -9,3 +9,4 @@ __pycache__/
 *_find.py
 main_backup.py
 main_before_check24.py
+run_job_alert.sh
