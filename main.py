@@ -35,6 +35,19 @@ DB_NAME = "jobs.db"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY", "").strip()
+
+def use_supabase():
+    return bool(SUPABASE_URL and SUPABASE_SECRET_KEY)
+
+def supabase_headers():
+    return {
+        "apikey": SUPABASE_SECRET_KEY,
+        "Authorization": f"Bearer {SUPABASE_SECRET_KEY}",
+        "Content-Type": "application/json",
+    }
+
 COMPANIES = {
     "FINN": "finn",
     "QuantCo": "quantco-"
