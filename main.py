@@ -329,6 +329,35 @@ def job_exists(job_id):
 
 
 def save_job(job, alerted=False):
+    if use_supabase():
+        payload = {
+            "job_id": job["id"],
+            "company": job["company"],
+            "title": job["title"],
+            "location": job["location"],
+            "url": job["url"],
+        }
+
+        if alerted:
+            payload["alerted_at"] = "now()"
+
+        headers = supabase_headers().copy()
+        headers["Prefer"] = "resolution=ignore-duplicates"
+
+        try:
+            r = requests.post(
+                f"{SUPABASE_URL}/rest/v1/jobs",
+                headers=headers,
+                json=payload,
+                timeout=30,
+            )
+            r.raise_for_status()
+            return
+
+        except Exception as error:
+            print("Supabase save_job error:", error)
+            return
+
     connection = sqlite3.connect(DB_NAME)
 
     if alerted:
@@ -1425,6 +1454,26 @@ print("===================================\n")
 new_jobs = []
 
 def source_is_initialized(source_name):
+    if use_supabase():
+        try:
+            r = requests.get(
+                f"{SUPABASE_URL}/rest/v1/source_state",
+                headers=supabase_headers(),
+                params={
+                    "source_name": f"eq.{source_name}",
+                    "select": "source_name",
+                    "limit": "1",
+                },
+                timeout=30,
+            )
+            r.raise_for_status()
+
+            return len(r.json()) > 0
+
+        except Exception as error:
+            print("Supabase source_is_initialized error:", error)
+            return False
+
     connection = sqlite3.connect(DB_NAME)
 
     result = connection.execute(
@@ -1438,6 +1487,26 @@ def source_is_initialized(source_name):
 
 
 def mark_source_initialized(source_name):
+    if use_supabase():
+        headers = supabase_headers().copy()
+        headers["Prefer"] = "resolution=ignore-duplicates"
+
+        try:
+            r = requests.post(
+                f"{SUPABASE_URL}/rest/v1/source_state",
+                headers=headers,
+                json={
+                    "source_name": source_name
+                },
+                timeout=30,
+            )
+            r.raise_for_status()
+            return
+
+        except Exception as error:
+            print("Supabase mark_source_initialized error:", error)
+            return
+
     connection = sqlite3.connect(DB_NAME)
 
     connection.execute(
