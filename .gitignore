@@ -1,0 +1,11 @@
+.env
+jobs.db
+job_alert.log
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+*_test.py
+*_find.py
+main_backup.py
+main_before_check24.py
