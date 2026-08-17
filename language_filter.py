@@ -87,6 +87,13 @@ def requires_advanced_german(text):
         r"\bstrong\s+communication\s+skills\s+in\s+(?:both\s+)?german\s+and\s+english\b",
         r"\bexcellent\s+communication\s+skills\s+in\s+(?:both\s+)?german\s+and\s+english\b",
         r"\bvery\s+good\s+communication\s+skills\s+in\s+(?:both\s+)?german\s+and\s+english\b",
+
+        # German CEFR requirements in flexible English wording
+        r"\bgerman\b.{0,40}\b(?:at\s+least|minimum|min\.?|required|mandatory)\b.{0,30}\b(?:b2|c1|c2)\b",
+        r"\b(?:at\s+least|minimum|min\.?)\b.{0,30}\b(?:b2|c1|c2)\b.{0,40}\bgerman\b",
+        r"\bgerman\b.{0,30}\b(?:b2|c1|c2)\s*(?:level|niveau)?\b",
+        r"\b(?:b2|c1|c2)\s*(?:level|niveau)?\b.{0,30}\bgerman\b",
+        r"\bgerman\s+proficiency\b.{0,30}\b(?:b2|c1|c2)\b",
     ]
 
     return any(
