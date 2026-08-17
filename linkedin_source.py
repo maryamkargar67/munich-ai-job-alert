@@ -289,6 +289,27 @@ def fetch_linkedin_jobs():
         ):
             continue
 
+        # Hard education filter:
+        # reject PhD / doctoral-only positions
+        phd_patterns = [
+            r"\bph\.?d\.?\s+intern\b",
+            r"\bph\.?d\.?\s+internship\b",
+            r"\bph\.?d\.?\s+student\b",
+            r"\bph\.?d\.?\s+candidate\b",
+            r"\bdoctoral\s+student\b",
+            r"\bdoctoral\s+researcher\b",
+            r"\bdoctoral\s+candidate\b",
+            r"\bcurrently\s+pursuing\s+(?:a\s+)?ph\.?d\.?\b",
+            r"\bpursuing\s+(?:a\s+)?ph\.?d\.?\b",
+            r"\benrolled\s+in\s+(?:a\s+)?ph\.?d\.?\b",
+        ]
+
+        if any(
+            re.search(pattern, full_text)
+            for pattern in phd_patterns
+        ):
+            continue
+
         # -----------------------------------
         # TRUE AI ROLE RELEVANCE
         # -----------------------------------
