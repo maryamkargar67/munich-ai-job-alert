@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import os
 import sqlite3
 import requests
@@ -329,6 +330,25 @@ def init_database():
 
 
 def job_exists(job_id):
+    if use_supabase():
+        try:
+            r = requests.get(
+                f"{SUPABASE_URL}/rest/v1/jobs",
+                headers=supabase_headers(),
+                params={
+                    "job_id": f"eq.{job_id}",
+                    "select": "job_id",
+                    "limit": "1",
+                },
+                timeout=30,
+            )
+            r.raise_for_status()
+            return len(r.json()) > 0
+
+        except Exception as error:
+            print("Supabase job_exists error:", error)
+            return True
+
     connection = sqlite3.connect(DB_NAME)
 
     result = connection.execute(
@@ -352,7 +372,7 @@ def save_job(job, alerted=False):
         }
 
         if alerted:
-            payload["alerted_at"] = "now()"
+            payload["alerted_at"] = datetime.now(timezone.utc).isoformat()
 
         headers = supabase_headers().copy()
         headers["Prefer"] = "resolution=ignore-duplicates"
