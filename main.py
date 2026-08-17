@@ -28,6 +28,7 @@ from siemens_energy_source import fetch_siemens_energy_jobs
 from jobmensa_source import fetch_jobmensa_jobs
 from studentjob_source import fetch_studentjob_jobs
 from nvidia_source import fetch_nvidia_jobs
+from yourfirm_source import fetch_yourfirm_jobs
 
 load_dotenv(".env")
 
@@ -795,6 +796,45 @@ try:
 
 except Exception as error:
     print("NVIDIA error:", error)
+
+
+
+# -----------------------------------
+# YOURFIRM
+# -----------------------------------
+
+try:
+    yourfirm_jobs = fetch_yourfirm_jobs()
+
+    for job in yourfirm_jobs:
+
+        score, matched_skills, breakdown = calculate_cv_score(
+            job["title"],
+            job["description"],
+            job["type"],
+            job["location"]
+        )
+
+        if score >= minimum_score_for_job(
+            job["title"],
+            job["type"]
+        ):
+            all_matches.append({
+                "id": job["id"],
+                "company": job["company"],
+                "title": job["title"],
+                "location": job["location"],
+                "type": job["type"],
+                "url": job["url"],
+                "score": score,
+                "matched_skills": matched_skills,
+                "breakdown": breakdown,
+                "source": "Yourfirm",
+                "posted_at": job.get("posted_at", "")
+            })
+
+except Exception as error:
+    print("Yourfirm error:", error)
 
 
 
