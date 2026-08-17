@@ -3,9 +3,6 @@ name: Munich AI Job Alert
 on:
   workflow_dispatch:
 
-  schedule:
-    - cron: "*/5 * * * *"
-
 concurrency:
   group: munich-ai-job-alert
   cancel-in-progress: false
