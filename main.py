@@ -547,6 +547,23 @@ for company_name, lever_id in COMPANIES.items():
 
         for job in jobs:
 
+            created_at = job.get("createdAt")
+
+            if created_at:
+                try:
+                    created_dt = datetime.fromtimestamp(
+                        created_at / 1000,
+                        tz=timezone.utc
+                    )
+
+                    age = datetime.now(timezone.utc) - created_dt
+
+                    if age.total_seconds() > 3 * 3600:
+                        continue
+
+                except Exception:
+                    continue
+
             title = job.get("text", "")
             title_lower = title.lower()
 
@@ -597,12 +614,7 @@ for company_name, lever_id in COMPANIES.items():
                 for place in MUNICH_LOCATIONS
             )
 
-            quantco_europe_match = (
-                company_name == "QuantCo"
-                and "europe" in location_lower
-            )
-
-            location_match = munich_match or quantco_europe_match
+            location_match = location_allowed(location)
 
             if ai_match and student_match and location_match:
 

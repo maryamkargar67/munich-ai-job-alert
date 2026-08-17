@@ -55,7 +55,7 @@ BLOCKED_SENIOR_TERMS = [
 ]
 
 
-def fetch_nvidia_jobs(max_age_days=7):
+def fetch_nvidia_jobs(max_age_days=0):
     print("Checking NVIDIA Direct Careers...")
 
     payload = {
