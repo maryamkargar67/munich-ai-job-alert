@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from urllib.parse import urljoin
 
 from location_filter import location_allowed
+from language_filter import requires_advanced_german
 
 
 BASE_URL = "https://www.studentjob.de"
@@ -109,27 +110,42 @@ def english_is_accepted(page_text, description):
     page_low = page_text.lower()
     desc_low = description.lower()
 
+    full_text = f"{page_text} {description}"
+
+    # Shared hard German requirement filter
+    if requires_advanced_german(full_text):
+        return False
+
+    # Additional StudentJob wording
     hard_german_patterns = [
-        r"sehr gute deutschkenntnisse",
-        r"gute deutschkenntnisse",
-        r"fließende deutschkenntnisse",
-        r"fliessende deutschkenntnisse",
-        r"fluent german",
-        r"native german",
-        r"native-level german",
-        r"verhandlungssicher.*deutsch",
-        r"deutsch.*verhandlungssicher",
-        r"german required",
-        r"german mandatory",
-        r"advanced german",
-        r"deutsch.*b2",
-        r"deutsch.*c1",
-        r"deutsch.*c2",
+        r"fließend(?:e|er|es)?\s+deutsch",
+        r"fliessend(?:e|er|es)?\s+deutsch",
+        r"deutsch\s+fließend",
+        r"deutsch\s+fliessend",
+        r"sehr\s+gut(?:e|er|es)?\s+deutsch",
+        r"gute\s+deutschkenntnisse",
     ]
 
     if any(
-        re.search(pattern, desc_low)
+        re.search(pattern, full_text.lower())
         for pattern in hard_german_patterns
+    ):
+        return False
+
+    # Driving licence / Führerschein hard filter
+    driving_licence_patterns = [
+        r"führerschein\s+(?:der\s+)?klasse\s+b",
+        r"fuehrerschein\s+(?:der\s+)?klasse\s+b",
+        r"fahrerlaubnis\s+(?:der\s+)?klasse\s+b",
+        r"führerschein\s+b\b",
+        r"fuehrerschein\s+b\b",
+        r"driving\s+licen[cs]e\s+(?:class\s+)?b",
+        r"class\s+b\s+driving\s+licen[cs]e",
+    ]
+
+    if any(
+        re.search(pattern, full_text.lower())
+        for pattern in driving_licence_patterns
     ):
         return False
 
