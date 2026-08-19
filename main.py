@@ -1581,6 +1581,40 @@ except Exception as error:
     print("LinkedIn error:", error)
 
 
+
+def keep_non_fulltime_job(job):
+    title = str(job.get("title", "")).lower()
+    job_type = str(job.get("type", "")).lower()
+    combined = f"{title} {job_type}"
+
+    allowed_terms = [
+        "working student",
+        "werkstudent",
+        "intern",
+        "internship",
+        "praktikum",
+        "part-time",
+        "part time",
+        "teilzeit",
+        "minijob",
+        "student assistant",
+        "studentische aushilfe",
+        "studentische hilfskraft",
+        "thesis",
+        "master thesis",
+        "abschlussarbeit",
+    ]
+
+    return any(term in combined for term in allowed_terms)
+
+
+# Hard rule: no ordinary full-time jobs anymore.
+all_matches = [
+    job for job in all_matches
+    if keep_non_fulltime_job(job)
+]
+
+
 side_jobs = []
 
 try:
@@ -1597,6 +1631,14 @@ try:
     side_jobs.extend(fetch_linkedin_admin_jobs())
 except Exception as error:
     print("LinkedIn Admin error:", error)
+
+
+# Hard rule for side jobs too: keep only student / internship / part-time / minijob.
+side_jobs = [
+    job for job in side_jobs
+    if keep_non_fulltime_job(job)
+]
+
 
 
 print("\n===================================")
