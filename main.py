@@ -9,6 +9,7 @@ from ashby_source import fetch_ashby_jobs
 from location_filter import location_allowed
 from language_filter import requires_advanced_german
 from linkedin_source import fetch_linkedin_jobs
+from linkedin_admin_source import fetch_linkedin_admin_jobs
 from allianz_source import fetch_allianz_jobs
 from sap_source import fetch_sap_jobs
 from infineon_source import fetch_infineon_jobs
@@ -503,8 +504,15 @@ def send_telegram(job):
 
 
 def send_side_job_telegram(job):
+    source = job.get("source", "")
+
+    if source == "LinkedIn Admin Side Jobs":
+        header = "📎 NEW ADMIN / OFFICE SIDE JOB"
+    else:
+        header = "🟢 NEW ENGLISH SIDE JOB"
+
     message = (
-        "🟢 NEW ENGLISH SIDE JOB\n\n"
+        f"{header}\n\n"
         f"🏢 Company: {job['company']}\n"
         f"💼 Title: {job['title']}\n"
         f"📍 Location: {job['location']}\n"
@@ -1584,6 +1592,11 @@ try:
     side_jobs.extend(fetch_studentjob_jobs())
 except Exception as error:
     print("StudentJob error:", error)
+
+try:
+    side_jobs.extend(fetch_linkedin_admin_jobs())
+except Exception as error:
+    print("LinkedIn Admin error:", error)
 
 
 print("\n===================================")
