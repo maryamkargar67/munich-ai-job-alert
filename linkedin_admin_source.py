@@ -307,10 +307,25 @@ def fetch_linkedin_admin_jobs():
         ):
             continue
 
-        # Must be student / part-time / minijob / internship friendly
+        # Must explicitly be student / part-time / minijob / internship friendly.
+        # Word boundaries prevent "intern" matching "international/internal".
+        student_parttime_patterns = [
+            r"\bworking student\b",
+            r"\bwerkstudent(?:in)?\b",
+            r"\bstudent assistant\b",
+            r"\bstudentische aushilfe\b",
+            r"\bstudentische hilfskraft\b",
+            r"\bpart[- ]time\b",
+            r"\bteilzeit\b",
+            r"\bminijob\b",
+            r"\bintern\b",
+            r"\binternship\b",
+            r"\bpraktikum\b",
+        ]
+
         if not any(
-            term in full_lower
-            for term in STUDENT_PARTTIME_TERMS
+            re.search(pattern, full_lower)
+            for pattern in student_parttime_patterns
         ):
             continue
 

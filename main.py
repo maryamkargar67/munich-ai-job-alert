@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import os
+import re
 import sqlite3
 import requests
 from dotenv import load_dotenv
@@ -1587,25 +1588,27 @@ def keep_non_fulltime_job(job):
     job_type = str(job.get("type", "")).lower()
     combined = f"{title} {job_type}"
 
-    allowed_terms = [
-        "working student",
-        "werkstudent",
-        "intern",
-        "internship",
-        "praktikum",
-        "part-time",
-        "part time",
-        "teilzeit",
-        "minijob",
-        "student assistant",
-        "studentische aushilfe",
-        "studentische hilfskraft",
-        "thesis",
-        "master thesis",
-        "abschlussarbeit",
+    allowed_patterns = [
+        r"\bworking student\b",
+        r"\bwerkstudent(?:in)?\b",
+        r"\bintern\b",
+        r"\binternship\b",
+        r"\bpraktikum\b",
+        r"\bpart[- ]time\b",
+        r"\bteilzeit\b",
+        r"\bminijob\b",
+        r"\bstudent assistant\b",
+        r"\bstudentische aushilfe\b",
+        r"\bstudentische hilfskraft\b",
+        r"\bmaster thesis\b",
+        r"\bthesis\b",
+        r"\babschlussarbeit\b",
     ]
 
-    return any(term in combined for term in allowed_terms)
+    return any(
+        re.search(pattern, combined)
+        for pattern in allowed_patterns
+    )
 
 
 # Hard rule: no ordinary full-time jobs anymore.
