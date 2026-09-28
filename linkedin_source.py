@@ -113,115 +113,139 @@ def fetch_job_description(job_id):
 
 def search_linkedin(
     keyword,
-    location="Munich, Bavaria, Germany"
+    location="Munich, Bavaria, Germany",
+    max_pages=4
 ):
-    params = {
-        "keywords": keyword,
-        "location": location,
-        "sortBy": "DD",
-
-        # Only jobs published in roughly the last hour.
-        # The bot will run every 5 minutes, so SQLite
-        # prevents the same job from being sent repeatedly.
-        "f_TPR": "r3600",
-
-        "start": 0
-    }
-
-    response = requests.get(
-        SEARCH_URL,
-        params=params,
-        headers=HEADERS,
-        timeout=20
-    )
-
-    if response.status_code != 200:
-        return []
-
-    soup = BeautifulSoup(
-        response.text,
-        "html.parser"
-    )
-
     jobs = []
 
-    for card in soup.select("li"):
+    for start in range(0, max_pages * 10, 10):
 
-        link = card.select_one(
-            "a.base-card__full-link"
+        params = {
+            "keywords": keyword,
+            "location": location,
+            "sortBy": "DD",
+
+            # Use a 6-hour overlap window so delayed GitHub runs
+            # or delayed LinkedIn indexing do not cause missed jobs.
+            # Database deduplication prevents duplicate alerts.
+            "f_TPR": "r21600",
+
+            "start": start
+        }
+
+        response = requests.get(
+            SEARCH_URL,
+            params=params,
+            headers=HEADERS,
+            timeout=20
         )
 
-        title_el = card.select_one(
-            ".base-search-card__title"
+        if response.status_code != 200:
+            break
+
+        soup = BeautifulSoup(
+            response.text,
+            "html.parser"
         )
 
-        company_el = card.select_one(
-            ".base-search-card__subtitle"
-        )
+        cards = soup.select("li")
 
-        location_el = card.select_one(
-            ".job-search-card__location"
-        )
+        if not cards:
+            break
 
-        time_el = card.select_one("time")
+        page_jobs = 0
 
-        posted_at = ""
-        posted_text = ""
+        for card in cards:
 
-        if time_el:
-            posted_at = time_el.get("datetime", "")
-            posted_text = time_el.get_text(
-                " ",
-                strip=True
+            link = card.select_one(
+                "a.base-card__full-link"
             )
 
-        if not link or not title_el:
-            continue
+            title_el = card.select_one(
+                ".base-search-card__title"
+            )
 
-        url = link.get(
-            "href",
-            ""
-        ).split("?")[0]
+            company_el = card.select_one(
+                ".base-search-card__subtitle"
+            )
 
-        title = " ".join(
-            title_el.get_text(
-                " ",
-                strip=True
-            ).split()
-        )
+            location_el = card.select_one(
+                ".job-search-card__location"
+            )
 
-        company = (
-            " ".join(
-                company_el.get_text(
+            time_el = card.select_one("time")
+
+            posted_at = ""
+            posted_text = ""
+
+            if time_el:
+                posted_at = time_el.get(
+                    "datetime",
+                    ""
+                )
+                posted_text = time_el.get_text(
+                    " ",
+                    strip=True
+                )
+
+            if not link or not title_el:
+                continue
+
+            url = link.get(
+                "href",
+                ""
+            ).split("?")[0]
+
+            title = " ".join(
+                title_el.get_text(
                     " ",
                     strip=True
                 ).split()
             )
-            if company_el
-            else ""
-        )
 
-        job_location = (
-            " ".join(
-                location_el.get_text(
-                    " ",
-                    strip=True
-                ).split()
+            company = (
+                " ".join(
+                    company_el.get_text(
+                        " ",
+                        strip=True
+                    ).split()
+                )
+                if company_el
+                else ""
             )
-            if location_el
-            else ""
-        )
 
-        jobs.append({
-            "title": title,
-            "company": company,
-            "location": job_location,
-            "url": url,
-            "posted_at": posted_at,
-            "posted_text": posted_text
-        })
+            job_location = (
+                " ".join(
+                    location_el.get_text(
+                        " ",
+                        strip=True
+                    ).split()
+                )
+                if location_el
+                else ""
+            )
 
-    return jobs
+            jobs.append({
+                "title": title,
+                "company": company,
+                "location": job_location,
+                "url": url,
+                "posted_at": posted_at,
+                "posted_text": posted_text
+            })
+
+            page_jobs += 1
+
+        if page_jobs == 0:
+            break
+
+    # Deduplicate jobs that may appear on multiple pages
+    unique = {}
+
+    for job in jobs:
+        unique[job["url"]] = job
+
+    return list(unique.values())
 
 
 def fetch_linkedin_jobs():
