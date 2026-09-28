@@ -286,3 +286,142 @@ if __name__ == "__main__":
         print(job["location"])
         print(job["url"])
         print()
+
+
+def fetch_infineon_student_jobs(max_age_minutes=180, max_pages=10):
+    print("Checking Infineon Munich Werkstudent jobs...")
+
+    cutoff = datetime.now() - timedelta(minutes=max_age_minutes)
+
+    discovery = []
+    seen_ids = set()
+
+    for start in range(0, max_pages * 10, 10):
+        data = get_with_retry(
+            SEARCH_URL,
+            {
+                "domain": "infineon.com",
+                "query": "Werkstudent",
+                "location": "Munich, BY, Germany",
+                "sort_by": "timestamp",
+                "start": start,
+                "filter_distance": 80,
+                "filter_include_remote": 0,
+                "filter_include_relocation": 0,
+            },
+        ).get("data", {})
+
+        positions = data.get("positions", [])
+
+        if not positions:
+            break
+
+        print(
+            f"Infineon Werkstudent start={start}: "
+            f"{len(positions)} discovery jobs"
+        )
+
+        page_has_recent = False
+
+        for job in positions:
+            job_id = job.get("id")
+
+            if not job_id or job_id in seen_ids:
+                continue
+
+            seen_ids.add(job_id)
+
+            ts = job.get("postedTs")
+
+            if not ts:
+                continue
+
+            posted = datetime.fromtimestamp(ts)
+
+            if posted >= cutoff:
+                page_has_recent = True
+                discovery.append(job)
+
+        if not page_has_recent:
+            break
+
+    print(
+        "Fresh Infineon Werkstudent discovery jobs:",
+        len(discovery)
+    )
+
+    relevant = []
+
+    for job in discovery:
+        title = (job.get("name") or "").strip()
+        title_lower = title.lower()
+
+        # Must really be a student role
+        if (
+            "werkstudent" not in title_lower
+            and "working student" not in title_lower
+            and "student assistant" not in title_lower
+        ):
+            continue
+
+        if is_blocked_senior(title):
+            continue
+
+        try:
+            detail = fetch_detail(job["id"])
+        except Exception as error:
+            print(
+                f"Infineon Werkstudent detail error {job['id']}:",
+                error,
+            )
+            continue
+
+        description = detail["description"]
+
+        combined_text = f"{title} {description}"
+        combined_lower = combined_text.lower()
+
+        # Reject jobs requiring advanced German
+        if requires_advanced_german(combined_text):
+            continue
+
+        # English must be mentioned / accepted
+        if (
+            "english" not in combined_lower
+            and "englisch" not in combined_lower
+        ):
+            continue
+
+        locations = job.get("locations", [])
+        location_text = ", ".join(locations)
+
+        # Keep Munich + our existing allowed radius logic
+        if not location_allowed(
+            location_text,
+            description,
+        ):
+            continue
+
+        ts = job.get("postedTs")
+
+        relevant.append({
+            "id": f"infineon-student-{job['id']}",
+            "company": "Infineon",
+            "title": title,
+            "location": location_text,
+            "type": "Working Student",
+            "url": detail["public_url"],
+            "description": description,
+            "source": "Infineon Student Side Jobs",
+            "posted_at": (
+                datetime.fromtimestamp(ts).isoformat()
+                if ts else ""
+            ),
+        })
+
+    print(
+        "Fresh English Infineon Werkstudent jobs:",
+        len(relevant)
+    )
+
+    return relevant

@@ -13,7 +13,7 @@ from linkedin_source import fetch_linkedin_jobs
 from linkedin_admin_source import fetch_linkedin_admin_jobs
 from allianz_source import fetch_allianz_jobs
 from sap_source import fetch_sap_jobs
-from infineon_source import fetch_infineon_jobs
+from infineon_source import fetch_infineon_jobs, fetch_infineon_student_jobs
 from bmw_source import fetch_bmw_jobs
 from bosch_source import fetch_bosch_jobs
 from munichre_source import fetch_munichre_jobs
@@ -1634,6 +1634,11 @@ try:
     side_jobs.extend(fetch_linkedin_admin_jobs())
 except Exception as error:
     print("LinkedIn Admin error:", error)
+
+try:
+    side_jobs.extend(fetch_infineon_student_jobs())
+except Exception as error:
+    print("Infineon Student error:", error)
 
 
 # Hard rule for side jobs too: keep only student / internship / part-time / minijob.
