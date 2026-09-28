@@ -26,12 +26,31 @@ QUERIES = [
     "AI Working Student",
     "Machine Learning Working Student",
     "Data Science Working Student",
+    "Computer Vision Working Student",
+    "Generative AI Working Student",
+    "LLM Working Student",
+    "NLP Working Student",
+    "Python Working Student",
+    "PyTorch Working Student",
+    "Data Analytics Working Student",
+    "AI Automation Working Student",
+    "Prompt Engineering Working Student",
+    "AI Product Working Student",
+    "Research Working Student AI",
+    "Werkstudent KI",
+    "Werkstudent Machine Learning",
+    "Werkstudent Python",
+
     "AI Intern",
     "Machine Learning Intern",
-    "AI Engineer",
-    "Junior AI Engineer",
-    "Computer Vision Working Student",
-    "LLM Working Student"
+    "Data Science Intern",
+    "Computer Vision Intern",
+    "Generative AI Intern",
+    "LLM Intern",
+    "NLP Intern",
+    "Python Intern",
+    "Data Analytics Intern",
+    "AI Automation Intern",
 ]
 
 
@@ -379,16 +398,16 @@ def fetch_linkedin_jobs():
         )
 
         student_role = any(
-            term in title_lower
-            for term in [
-                "working student",
-                "werkstudent",
-                "werkstudium",
-                "work and study",
-                "intern",
-                "internship",
-                "praktikant",
-                "praktikum"
+            re.search(pattern, title_lower)
+            for pattern in [
+                r"\bworking student\b",
+                r"\bwerkstudent(?:in)?\b",
+                r"\bwerkstudium\b",
+                r"\bwork and study\b",
+                r"\bintern\b",
+                r"\binternship\b",
+                r"\bpraktikant(?:in)?\b",
+                r"\bpraktikum\b",
             ]
         )
 
@@ -408,9 +427,7 @@ def fetch_linkedin_jobs():
             "legal",
             "recruiter",
             "talent acquisition",
-            "business intelligence",
-            "analytics & bi",
-            "data engineering"
+            "analytics & bi"
         ]
 
         if any(
@@ -419,18 +436,94 @@ def fetch_linkedin_jobs():
         ):
             continue
 
-        # Full-time / junior roles:
-        # AI/ML must be explicit in the title
-        if not student_role and not strong_ai_title:
+        # -----------------------------------
+        # CV / DESCRIPTION BASED RELEVANCE
+        # -----------------------------------
+        # The job title is NOT the main criterion anymore.
+        # A generic title is accepted when the actual
+        # description matches Mary's AI/Data/CV profile.
+
+        profile_terms = [
+            "python",
+            "pytorch",
+            "tensorflow",
+            "keras",
+            "scikit-learn",
+            "sklearn",
+            "opencv",
+            "computer vision",
+            "image processing",
+            "machine learning",
+            "deep learning",
+            "artificial intelligence",
+            "generative ai",
+            "genai",
+            "large language model",
+            "llm",
+            "transformer",
+            "transformers",
+            "nlp",
+            "natural language processing",
+            "prompt engineering",
+            "prompting",
+            "chatbot",
+            "data science",
+            "data analysis",
+            "data analytics",
+            "pandas",
+            "numpy",
+            "sql",
+            "aws",
+        ]
+
+        profile_hits = [
+            term
+            for term in profile_terms
+            if term in full_text
+        ]
+
+        # We no longer prioritize the job title for relevance.
+        # The title is mainly used to confirm that this is a
+        # student / internship role. Suitability comes from
+        # the actual description and Mary's CV skills.
+
+        if not student_role:
             continue
 
-        # Student / intern roles:
-        # Prefer explicit AI in title.
-        # If title is broader, require multiple AI signals
-        # in the actual job description.
-        if student_role and not strong_ai_title:
-            if len(ai_hits) < 3:
-                continue
+        core_profile_terms = [
+            "python",
+            "pytorch",
+            "tensorflow",
+            "machine learning",
+            "deep learning",
+            "computer vision",
+            "opencv",
+            "data science",
+            "data engineering",
+            "data analysis",
+            "data analytics",
+            "sql",
+            "nlp",
+            "natural language processing",
+            "llm",
+            "large language model",
+            "generative ai",
+            "transformer",
+            "aws",
+        ]
+
+        core_hits = [
+            term for term in core_profile_terms
+            if term in full_text
+        ]
+
+        # Generic titles are okay as long as the job description
+        # genuinely overlaps with the CV.
+        if len(set(profile_hits)) < 2:
+            continue
+
+        if not core_hits:
+            continue
 
         # Determine role type
         if (
