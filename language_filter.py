@@ -79,6 +79,10 @@ def requires_advanced_german(text):
     german_patterns = [
         r"\b(?:sehr\s+)?gute\s+deutsch[-\s]*(?:und|&)\s*englischkenntnisse\b",
         r"\bfließende\s+deutsch[-\s]*(?:und|&)\s*englischkenntnisse\b",
+        r"\bfließende\s+deutsch[-,\s]*(?:und|&)\s+(?:gute\s+)?englischkenntnisse\b",
+        r"\bfliessende\s+deutsch[-,\s]*(?:und|&)\s+(?:gute\s+)?englischkenntnisse\b",
+        r"\bsehr\s+gute\s+deutsch[-,\s]*(?:und|&)\s+(?:gute\s+)?englischkenntnisse\b",
+
         r"\bfliessende\s+deutsch[-\s]*(?:und|&)\s*englischkenntnisse\b",
         r"\bverhandlungssichere\s+deutsch[-\s]*(?:und|&)\s*englischkenntnisse\b",
         r"\b(?:sehr\s+)?gute\s+kenntnisse\s+in\s+deutsch\b",
