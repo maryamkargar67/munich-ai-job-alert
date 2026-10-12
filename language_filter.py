@@ -92,6 +92,9 @@ def requires_advanced_german(text):
         r"\bsprich(?:st|en)?\s+sehr\s+gut\s+deutsch\b",
         r"\bbeherrsch(?:st|en)?\s+deutsch\s+sehr\s+gut\b",
         r"\bverhandlungssicher\s+auf\s+deutsch\b",
+        r"\bverhandlungssicher(?:e|en|er|es|em)?\s+deutsch\b",
+        r"\bverhandlungssicher(?:e|en|er|es|em)?\s+deutschkenntnisse(?:n)?\b",
+
         r"\bverhandlungssicher(?:e|er|es)?\s+kenntnisse\s+in\s+deutsch\b",
         r"\bdeutsch\s+verhandlungssicher\b",
         r"\bdeutsch\s*\(\s*muttersprache\s*\)",
@@ -114,6 +117,10 @@ def requires_advanced_german(text):
         r"\bgerman\b.{0,30}\b(?:b2|c1|c2)\s*(?:level|niveau)?\b",
         r"\b(?:b2|c1|c2)\s*(?:level|niveau)?\b.{0,30}\bgerman\b",
         r"\bgerman\s+proficiency\b.{0,30}\b(?:b2|c1|c2)\b",
+        r"\bdeutsch\s*\(\s*(?:b2|c1|c2)\s*\)",
+        r"\bdeutsch\s+auf\s+(?:b2|c1|c2)[-\s]*niveau\b",
+        r"\bdeutsch\s+niveau\s+(?:b2|c1|c2)\b",
+
     ]
 
     return any(
