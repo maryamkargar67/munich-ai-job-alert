@@ -98,6 +98,10 @@ def requires_advanced_german(text):
         r"\bverhandlungssicher(?:e|er|es)?\s+kenntnisse\s+in\s+deutsch\b",
         r"\bdeutsch\s+verhandlungssicher\b",
         r"\bdeutsch\s*\(\s*muttersprache\s*\)",
+        r"\bdeutsch\s+ist\s+(?:deine|ihre)\s+muttersprache\b",
+        r"\bdeutsch\s+als\s+muttersprache\b",
+        r"\bmuttersprache\s+deutsch\b",
+
         r"\bmuttersprache\s*:?\s*deutsch\b",
         r"\bdeutsch\s+als\s+muttersprache\b",
         r"\bsehr\s+gute\s+deutsch[-,\s]*(?:englisch|und|&)",
