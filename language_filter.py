@@ -18,9 +18,8 @@ def requires_advanced_german(text):
 
     normalized = text.lower()
 
-    for pattern in allowed_basic_german_patterns:
-        if re.search(pattern, normalized):
-            return False
+    # A1/A2/basic German are allowed, but do not return early here.
+    # The full text still needs to be checked for any stronger German requirement.
     text = " ".join(text.lower().split())
 
     blocked_terms = [
@@ -134,6 +133,11 @@ def requires_advanced_german(text):
         r"\bstrong\s+communication\s+skills\s+in\s+(?:both\s+)?german\s+and\s+english\b",
         r"\bexcellent\s+communication\s+skills\s+in\s+(?:both\s+)?german\s+and\s+english\b",
         r"\bvery\s+good\s+communication\s+skills\s+in\s+(?:both\s+)?german\s+and\s+english\b",
+        r"\bexcellent\s+(?:verbal|written)(?:\s+and\s+(?:verbal|written))?\s+communication\s+skills\s+in\s+german\b",
+        r"\bexcellent\s+verbal\s+and\s+written\s+(?:communication\s+)?skills\s+in\s+german\b",
+        r"\bexcellent\s+(?:written|spoken|verbal)\s+german\b",
+        r"\bexcellent\s+german\s+(?:skills|language\s+skills|proficiency)\b",
+
 
         # German CEFR requirements in flexible English wording
         r"\bgerman\b.{0,40}\b(?:at\s+least|minimum|min\.?|required|mandatory)\b.{0,30}\b(?:b2|c1|c2)\b",
