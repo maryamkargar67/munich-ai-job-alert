@@ -99,6 +99,9 @@ def requires_advanced_german(text):
         r"\bdeutsch\s+als\s+muttersprache\b",
         r"\bsehr\s+gute\s+deutsch[-,\s]*(?:englisch|und|&)",
         r"\bsehr\s+gute\s+deutsch[-\s]*kenntnisse\b",
+        r"\bsehr\s+gut(?:e|en|er|es|em)?\s+deutschkenntnisse(?:n)?\b",
+        r"\bmit\s+sehr\s+gut(?:e|en|er|es|em)?\s+deutschkenntnisse(?:n)?\b",
+
         r"\b(?:very\s+)?good\s+german\s+(?:skills|language\s+skills|proficiency)\b",
         r"\bproficient\s+in\s+german\b",
         r"\bstrong\s+communication\s+skills\s+in\s+(?:both\s+)?german\s+and\s+english\b",
