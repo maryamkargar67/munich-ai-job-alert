@@ -1,6 +1,26 @@
 import re
 
 def requires_advanced_german(text):
+
+    allowed_basic_german_patterns = [
+        r"\bdeutsch\s*\(\s*a1\s*\)",
+        r"\bdeutsch\s*\(\s*a2\s*\)",
+        r"\bdeutsch\s+auf\s+a1[-\s]*niveau\b",
+        r"\bdeutsch\s+auf\s+a2[-\s]*niveau\b",
+        r"\bdeutsch\s+niveau\s+a1\b",
+        r"\bdeutsch\s+niveau\s+a2\b",
+        r"\bgrundkenntnisse\s+deutsch\b",
+        r"\bdeutschkenntnisse\s+grundkenntnisse\b",
+        r"\bbasic\s+german\b",
+        r"\bgerman\s+is\s+a\s+plus\b",
+        r"\bgerman\s+(?:is\s+)?(?:advantageous|preferred)\b",
+    ]
+
+    normalized = text.lower()
+
+    for pattern in allowed_basic_german_patterns:
+        if re.search(pattern, normalized):
+            return False
     text = " ".join(text.lower().split())
 
     blocked_terms = [
