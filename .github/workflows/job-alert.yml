@@ -3,6 +3,10 @@ name: Munich AI Job Alert
 on:
   workflow_dispatch:
 
+  push:
+    branches: [main]
+    paths: [.github/workflows/job-alert.yml]
+
   schedule:
     - cron: "*/5 * * * *"
 
