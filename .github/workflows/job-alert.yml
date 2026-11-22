@@ -8,7 +8,12 @@ on:
     paths: [.github/workflows/job-alert.yml]
 
   schedule:
-    - cron: "*/5 * * * *"
+    # Backup only. The primary Supabase trigger runs at :00/:15/:30/:45.
+    - cron: "7,22,37,52 * * * *"
+
+permissions:
+  actions: read
+  contents: read
 
 concurrency:
   group: munich-ai-job-alert
@@ -32,7 +37,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Skip a backup scan if an actual scan recently completed
+        id: freshness
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/radar_schedule.py gate
+
       - name: Run job alert
+        if: steps.freshness.outputs.run_scan == 'true'
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
