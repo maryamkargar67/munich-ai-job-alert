@@ -47,7 +47,7 @@ def parse_jobposting_jsonld(html):
     return {}
 
 
-def is_fresh(published_at, max_age_minutes=180):
+def is_fresh(published_at, max_age_minutes=1440):
     if not published_at:
         return False
 
@@ -176,7 +176,7 @@ def english_is_accepted(page_text, description):
     return False
 
 
-def fetch_studentjob_jobs(max_age_minutes=180):
+def fetch_studentjob_jobs(max_age_minutes=1440):
     print("Checking StudentJob English Side Jobs...")
 
     r = requests.get(

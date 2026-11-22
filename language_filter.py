@@ -1,6 +1,6 @@
 import re
 
-def requires_advanced_german(text):
+def _requires_advanced_german(text):
 
     allowed_basic_german_patterns = [
         r"\bdeutsch\s*\(\s*a1\s*\)",
@@ -155,3 +155,23 @@ def requires_advanced_german(text):
         re.search(pattern, text)
         for pattern in german_patterns
     )
+
+
+def requires_advanced_german(text):
+    # English C1 must not be mistaken for German C1. Check separate clauses;
+    # an optional German clause must not erase a mandatory German clause.
+    clauses = re.split(r"[,;\n!?]+|(?<!mind)\.(?!\d)|\bbut\b|\baber\b", str(text or "").lower())
+    for clause in clauses:
+        if not re.search(r"\b(?:german|deutsch\w*)\b", clause):
+            continue
+        optional = re.search(r"(?:not required|not mandatory|no german required|keine? deutschkenntnisse|nicht erforderlich|optional|a plus|nice.to.have|von vorteil|wünschenswert|wuenschenswert|advantageous|preferred)", clause)
+        if optional:
+            # Only the German subclause may make German optional.
+            german_part = re.split(r"\b(?:and|und)\s+(?!(?:english|englisch)\b)", clause)[0]
+            if re.search(r"(?:not required|not mandatory|no german required|keine? deutschkenntnisse|nicht erforderlich|optional|a plus|nice.to.have|von vorteil|wünschenswert|wuenschenswert|advantageous|preferred)", german_part):
+                continue
+        # Do not let an English level elsewhere in a long clause bind to German.
+        clause = re.sub(r"\b(?:english|englisch\w*)\s*(?:at\s+least\s+|level\s+|niveau\s+)?(?:b2|c1|c2)\b", "english", clause)
+        if _requires_advanced_german(clause):
+            return True
+    return False

@@ -142,7 +142,7 @@ def is_early_career(title, description, job_type):
     return job_type == "Full-Time"
 
 
-def is_fresh(published_at, max_age_minutes=180):
+def is_fresh(published_at, max_age_minutes=1440):
     if not published_at:
         return False
 
@@ -163,7 +163,7 @@ def is_fresh(published_at, max_age_minutes=180):
         return False
 
 
-def fetch_deepl_jobs(max_age_minutes=180):
+def fetch_deepl_jobs(max_age_minutes=1440):
     print("Checking DeepL Direct Careers...")
 
     r = requests.get(

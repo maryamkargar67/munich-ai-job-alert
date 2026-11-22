@@ -57,7 +57,7 @@ def clean_text(value):
     return " ".join((value or "").split())
 
 
-def is_fresh(published_at, max_age_minutes=180):
+def is_fresh(published_at, max_age_minutes=1440):
     if not published_at:
         return False
 
@@ -142,7 +142,7 @@ def is_suitable_level(title, description, job_type):
     return True
 
 
-def fetch_tacto_jobs(max_age_minutes=180):
+def fetch_tacto_jobs(max_age_minutes=1440):
     print("Checking Tacto Direct Careers...")
 
     r = requests.get(

@@ -8,30 +8,7 @@ HEADERS = {
 }
 
 
-def requires_advanced_german(text):
-    text = text.lower()
-
-    blocked_terms = [
-        "german speaking",
-        "german-speaking",
-        "fluent german",
-        "advanced german",
-        "native german",
-        "german required",
-        "german is required",
-        "german mandatory",
-        "at least c1",
-        "c1 german",
-        "german c1",
-        "verhandlungssichere deutschkenntnisse",
-        "sehr gute deutschkenntnisse",
-        "fließende deutschkenntnisse",
-        "fliessende deutschkenntnisse",
-        "mind. c1",
-        "mindestens c1"
-    ]
-
-    return any(term in text for term in blocked_terms)
+from language_filter import requires_advanced_german
 
 
 AI_TERMS = [

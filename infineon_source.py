@@ -1,3 +1,5 @@
+from functools import lru_cache
+from discovery_cache import seen
 import time
 from datetime import datetime, timedelta
 
@@ -113,6 +115,7 @@ def is_early_career(role_type, join_as):
     return False
 
 
+@lru_cache(maxsize=256)
 def fetch_detail(position_id):
     data = get_with_retry(
         DETAIL_URL,
@@ -138,7 +141,7 @@ def fetch_detail(position_id):
     }
 
 
-def fetch_infineon_jobs(max_age_minutes=180, max_pages=20):
+def fetch_infineon_jobs(max_age_minutes=1440, max_pages=20):
     print("Checking Infineon Direct Careers...")
 
     cutoff = datetime.now() - timedelta(minutes=max_age_minutes)
@@ -177,6 +180,8 @@ def fetch_infineon_jobs(max_age_minutes=180, max_pages=20):
                 continue
 
             seen_ids.add(job_id)
+            if seen(f"infineon-{job_id}") or seen(f"infineon-student-{job_id}"):
+                continue
 
             ts = job.get("postedTs")
 
@@ -288,7 +293,7 @@ if __name__ == "__main__":
         print()
 
 
-def fetch_infineon_student_jobs(max_age_minutes=180, max_pages=10):
+def fetch_infineon_student_jobs(max_age_minutes=1440, max_pages=10):
     print("Checking Infineon Munich Werkstudent jobs...")
 
     cutoff = datetime.now() - timedelta(minutes=max_age_minutes)
@@ -330,6 +335,8 @@ def fetch_infineon_student_jobs(max_age_minutes=180, max_pages=10):
                 continue
 
             seen_ids.add(job_id)
+            if seen(f"infineon-{job_id}") or seen(f"infineon-student-{job_id}"):
+                continue
 
             ts = job.get("postedTs")
 

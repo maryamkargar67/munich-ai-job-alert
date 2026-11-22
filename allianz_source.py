@@ -28,7 +28,7 @@ def parse_date(value):
         return None
 
 
-def is_fresh(posted_date, max_age_minutes=120):
+def is_fresh(posted_date, max_age_minutes=1440):
     dt = parse_date(posted_date)
 
     if not dt:
@@ -140,7 +140,7 @@ def fetch_allianz_jobs():
         # Freshness first
         if not is_fresh(
             posted_at,
-            max_age_minutes=120
+            max_age_minutes=1440
         ):
             continue
 
