@@ -158,20 +158,17 @@ def _requires_advanced_german(text):
 
 
 def requires_advanced_german(text):
-    # English C1 must not be mistaken for German C1. Check separate clauses;
-    # an optional German clause must not erase a mandatory German clause.
+    # Keep English levels and optional German separate from mandatory German.
     clauses = re.split(r"[,;\n!?]+|(?<!mind)\.(?!\d)|\bbut\b|\baber\b", str(text or "").lower())
     for clause in clauses:
-        if not re.search(r"\b(?:german|deutsch\w*)\b", clause):
-            continue
-        optional = re.search(r"(?:not required|not mandatory|no german required|keine? deutschkenntnisse|nicht erforderlich|optional|a plus|nice.to.have|von vorteil|wünschenswert|wuenschenswert|advantageous|preferred)", clause)
-        if optional:
-            # Only the German subclause may make German optional.
-            german_part = re.split(r"\b(?:and|und)\s+(?!(?:english|englisch)\b)", clause)[0]
-            if re.search(r"(?:not required|not mandatory|no german required|keine? deutschkenntnisse|nicht erforderlich|optional|a plus|nice.to.have|von vorteil|wünschenswert|wuenschenswert|advantageous|preferred)", german_part):
+        parts = re.split(r"\b(?:and|und)\s+(?!(?:english|englisch\w*)\b)", clause)
+        for part in parts:
+            if not re.search(r"\b(?:german|deutsch\w*)\b", part):
                 continue
-        # Do not let an English level elsewhere in a long clause bind to German.
-        clause = re.sub(r"\b(?:english|englisch\w*)\s*(?:at\s+least\s+|level\s+|niveau\s+)?(?:b2|c1|c2)\b", "english", clause)
-        if _requires_advanced_german(clause):
-            return True
+            if re.search(r"(?:not required|not mandatory|no german required|keine? deutschkenntnisse|nicht erforderlich|optional|a plus|nice.to.have|von vorteil|wünschenswert|wuenschenswert|advantageous|preferred)", part):
+                continue
+            part = re.sub(r"\b(?:english|englisch\w*)\s*(?:at\s+least\s+|level\s+|niveau\s+)?(?:b2|c1|c2)\b", "english", part)
+            part = re.sub(r"\b(?:at\s+least\s+)?(?:b2|c1|c2)\s+(?:english|englisch\w*)\b", "english", part)
+            if _requires_advanced_german(part):
+                return True
     return False
