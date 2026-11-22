@@ -86,9 +86,9 @@ class RadarTests(unittest.TestCase):
         self.assertNotEqual(canonical_url('https://x.com/job?id=1'), canonical_url('https://x.com/job?id=2'))
 
     def test_german_level_belongs_to_german(self):
-        for text in ('English at least C1. Basic German A1.', 'German C1 is a plus.', 'English C1; German optional'):
+        for text in ('English at least C1. Basic German A1.', 'German C1 is a plus.', 'English C1; German optional', 'English required and German C1 optional', 'At least C1 English and basic German'):
             self.assertFalse(requires_advanced_german(text), text)
-        for text in ('Fluent German required.', 'Deutsch auf C1-Niveau', 'Sehr gute Deutsch- und Englischkenntnisse', 'German optional; fluent German required', 'Fluent German required, Python optional', 'Fluent German required and Python optional'):
+        for text in ('Fluent German required.', 'Deutsch auf C1-Niveau', 'Sehr gute Deutsch- und Englischkenntnisse', 'German optional; fluent German required', 'Fluent German required, Python optional', 'Fluent German required and Python optional', 'Python optional and fluent German required', 'German C1 optional and fluent German required'):
             self.assertTrue(requires_advanced_german(text), text)
 
     def test_remote_does_not_allow_distant_hybrid_office(self):
