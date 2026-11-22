@@ -121,6 +121,8 @@ def minimum_score_for_job(title, job_type):
 
 
 def calculate_cv_score(title, description, commitment, location):
+    if requires_advanced_german(f"{title}\n{description}") or not location_allowed(location, description):
+        return 0, [], {}
     text = f"{title} {description}".lower()
     title_lower = title.lower()
     commitment_lower = commitment.lower()
@@ -330,6 +332,11 @@ def init_database():
         )
     """)
 
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(jobs)")}
+    for column in ("first_seen_at", "alerted_at"):
+        if column not in columns:
+            connection.execute(f"ALTER TABLE jobs ADD COLUMN {column} TEXT")
+    connection.execute("CREATE TABLE IF NOT EXISTS source_state (source_name TEXT PRIMARY KEY, initialized_at TEXT)")
     connection.commit()
     connection.close()
 
@@ -393,8 +400,7 @@ def save_job(job, alerted=False):
             return
 
         except Exception as error:
-            print("Supabase save_job error:", error)
-            return
+            raise RuntimeError("Could not persist job history") from error
 
     connection = sqlite3.connect(DB_NAME)
 
@@ -539,1147 +545,6 @@ def send_side_job_telegram(job):
     return False
 
 
-init_database()
-
-all_matches = []
-
-for company_name, lever_id in COMPANIES.items():
-
-    print(f"\nChecking {company_name}...")
-
-    url = f"https://api.lever.co/v0/postings/{lever_id}?mode=json"
-
-    try:
-        response = requests.get(url, timeout=20)
-        response.raise_for_status()
-
-        jobs = response.json()
-
-        print(f"Total jobs: {len(jobs)}")
-
-        for job in jobs:
-
-            created_at = job.get("createdAt")
-
-            if created_at:
-                try:
-                    created_dt = datetime.fromtimestamp(
-                        created_at / 1000,
-                        tz=timezone.utc
-                    )
-
-                    age = datetime.now(timezone.utc) - created_dt
-
-                    if age.total_seconds() > 3 * 3600:
-                        continue
-
-                except Exception:
-                    continue
-
-            title = job.get("text", "")
-            title_lower = title.lower()
-
-            categories = job.get("categories", {})
-            location = categories.get("location", "")
-            commitment = categories.get("commitment", "")
-
-            if "working student" in title_lower or "werkstudent" in title_lower:
-                commitment = "Working Student"
-            elif "internship" in title_lower or " intern" in title_lower:
-                commitment = "Internship"
-            elif "junior" in title_lower or "graduate" in title_lower:
-                commitment = "Junior"
-
-            description = job.get("descriptionPlain", "")
-
-            extra_parts = []
-
-            for section in job.get("lists", []):
-                label = section.get("text", "")
-                content = section.get("content", "")
-                extra_parts.append(f"{label} {content}")
-
-            additional = job.get("additionalPlain", "")
-
-            full_description = (
-                description
-                + " "
-                + " ".join(extra_parts)
-                + " "
-                + additional
-            )
-
-            location_lower = location.lower()
-
-            ai_match = any(
-                keyword in title_lower
-                for keyword in AI_TITLE_KEYWORDS
-            )
-
-            student_match = any(
-                keyword in title_lower
-                for keyword in STUDENT_TITLE_KEYWORDS
-            )
-
-            munich_match = any(
-                place in location_lower
-                for place in MUNICH_LOCATIONS
-            )
-
-            location_match = location_allowed(location)
-
-            if ai_match and student_match and location_match:
-
-                score_text = f"{title} {full_description}"
-                score, matched_skills, breakdown = calculate_cv_score(title, full_description, commitment, location)
-
-                all_matches.append({
-                    "id": job.get("id"),
-                    "company": company_name,
-                    "title": title,
-                    "location": location,
-                    "type": commitment,
-                    "url": job.get("hostedUrl"),
-                    "score": score,
-                    "matched_skills": matched_skills,
-                    "breakdown": breakdown,
-                    "source": company_name
-                })
-
-    except Exception as error:
-        print("Error:", error)
-
-
-# Sort jobs by CV score
-all_matches.sort(
-    key=lambda job: job.get("score", 0),
-    reverse=True
-)
-
-
-# -----------------------------------
-# CHECK24
-# -----------------------------------
-
-try:
-    check24_jobs = fetch_check24_jobs()
-
-    for job in check24_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "CHECK24"
-            })
-
-except Exception as error:
-    print("CHECK24 error:", error)
-
-
-
-# -----------------------------------
-# HAWK
-# -----------------------------------
-
-try:
-    hawk_jobs = fetch_hawk_jobs()
-
-    for job in hawk_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Hawk"
-            })
-
-except Exception as error:
-    print("Hawk error:", error)
-
-
-
-# -----------------------------------
-# ASHBY AI COMPANIES
-# -----------------------------------
-
-try:
-    ashby_jobs = fetch_ashby_jobs()
-
-    for job in ashby_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Ashby"
-            })
-
-except Exception as error:
-    print("Ashby error:", error)
-
-
-
-# -----------------------------------
-# NVIDIA DIRECT
-# -----------------------------------
-
-try:
-    nvidia_jobs = fetch_nvidia_jobs()
-
-    for job in nvidia_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "NVIDIA Direct Careers",
-                "posted_at": job.get("date_posted", "")
-            })
-
-except Exception as error:
-    print("NVIDIA error:", error)
-
-
-
-# -----------------------------------
-# YOURFIRM
-# -----------------------------------
-
-try:
-    yourfirm_jobs = fetch_yourfirm_jobs()
-
-    for job in yourfirm_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Yourfirm",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("Yourfirm error:", error)
-
-
-
-# -----------------------------------
-# HEYJOBS
-# -----------------------------------
-
-try:
-    heyjobs_jobs = fetch_heyjobs_jobs()
-
-    for job in heyjobs_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "HeyJobs",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("HeyJobs error:", error)
-
-
-
-# -----------------------------------
-# FRAUNHOFER DIRECT
-# -----------------------------------
-
-try:
-    fraunhofer_jobs = fetch_fraunhofer_jobs()
-
-    for job in fraunhofer_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Fraunhofer Direct Careers",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("Fraunhofer error:", error)
-
-
-
-# -----------------------------------
-# BMW DIRECT
-# -----------------------------------
-
-try:
-    bmw_jobs = fetch_bmw_jobs()
-
-    for job in bmw_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "BMW",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("BMW error:", error)
-
-
-
-
-# -----------------------------------
-# BOSCH DIRECT
-# -----------------------------------
-
-try:
-    bosch_jobs = fetch_bosch_jobs()
-
-    for job in bosch_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Bosch",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("Bosch error:", error)
-
-
-# -----------------------------------
-# MUNICH RE DIRECT
-# -----------------------------------
-
-try:
-    munichre_jobs = fetch_munichre_jobs()
-
-    for job in munichre_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Munich Re",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("Munich Re error:", error)
-
-
-# -----------------------------------
-# MERCEDES-BENZ DIRECT
-# -----------------------------------
-
-try:
-    mercedes_jobs = fetch_mercedes_jobs()
-
-    for job in mercedes_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Mercedes-Benz",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("Mercedes-Benz error:", error)
-
-
-# -----------------------------------
-# TECH LADIES
-# -----------------------------------
-
-try:
-    techladies_jobs = fetch_techladies_jobs()
-
-    for job in techladies_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Tech Ladies",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("Tech Ladies error:", error)
-
-
-# -----------------------------------
-# DEEPL DIRECT
-# -----------------------------------
-
-try:
-    deepl_jobs = fetch_deepl_jobs()
-
-    for job in deepl_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "DeepL",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("DeepL error:", error)
-
-
-# -----------------------------------
-# HELSING DIRECT
-# -----------------------------------
-
-try:
-    helsing_jobs = fetch_helsing_jobs()
-
-    for job in helsing_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Helsing",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("Helsing error:", error)
-
-
-# -----------------------------------
-# MISTRAL AI DIRECT
-# -----------------------------------
-
-try:
-    mistral_jobs = fetch_mistral_jobs()
-
-    for job in mistral_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Mistral AI",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("Mistral AI error:", error)
-
-
-# -----------------------------------
-# TACTO DIRECT
-# -----------------------------------
-
-try:
-    tacto_jobs = fetch_tacto_jobs()
-
-    for job in tacto_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Tacto",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("Tacto error:", error)
-
-
-# -----------------------------------
-# APPLIEDAI DIRECT
-# -----------------------------------
-
-try:
-    appliedai_jobs = fetch_appliedai_jobs()
-
-    for job in appliedai_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "appliedAI",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("appliedAI error:", error)
-
-
-# -----------------------------------
-# CELONIS DIRECT
-# -----------------------------------
-
-try:
-    celonis_jobs = fetch_celonis_jobs()
-
-    for job in celonis_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Celonis",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("Celonis error:", error)
-
-
-# -----------------------------------
-# INFINEON DIRECT
-# -----------------------------------
-
-try:
-    infineon_jobs = fetch_infineon_jobs()
-
-    for job in infineon_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Infineon",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("Infineon error:", error)
-
-
-
-
-# -----------------------------------
-# SAP DIRECT
-# -----------------------------------
-
-try:
-    sap_jobs = fetch_sap_jobs()
-
-    for job in sap_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "SAP",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("SAP error:", error)
-
-
-
-
-# -----------------------------------
-# SIEMENS DIRECT
-# -----------------------------------
-
-try:
-    siemens_jobs = fetch_siemens_jobs()
-
-    for job in siemens_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Siemens",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("Siemens error:", error)
-
-
-
-# -----------------------------------
-# SIEMENS ENERGY DIRECT
-# -----------------------------------
-
-try:
-    siemens_energy_jobs = fetch_siemens_energy_jobs()
-
-    for job in siemens_energy_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Siemens Energy",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("Siemens Energy error:", error)
-
-
-
-
-# -----------------------------------
-# ALLIANZ DIRECT
-# -----------------------------------
-
-try:
-    allianz_jobs = fetch_allianz_jobs()
-
-    for job in allianz_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "Allianz",
-                "posted_at": job.get("posted_at", "")
-            })
-
-except Exception as error:
-    print("Allianz error:", error)
-
-
-
-# -----------------------------------
-# LINKEDIN DISCOVERY
-# -----------------------------------
-
-try:
-    linkedin_jobs = fetch_linkedin_jobs()
-
-    for job in linkedin_jobs:
-
-        score, matched_skills, breakdown = calculate_cv_score(
-            job["title"],
-            job["description"],
-            job["type"],
-            job["location"]
-        )
-
-        if score >= minimum_score_for_job(
-            job["title"],
-            job["type"]
-        ):
-            all_matches.append({
-                "id": job["id"],
-                "company": job["company"],
-                "title": job["title"],
-                "location": job["location"],
-                "type": job["type"],
-                "url": job["url"],
-                "score": score,
-                "matched_skills": matched_skills,
-                "breakdown": breakdown,
-                "source": "LinkedIn"
-            })
-
-except Exception as error:
-    print("LinkedIn error:", error)
-
-
-
-def keep_non_fulltime_job(job):
-    title = str(job.get("title", "")).lower()
-    job_type = str(job.get("type", "")).lower()
-    combined = f"{title} {job_type}"
-
-    allowed_patterns = [
-        r"\bworking student\b",
-        r"\bwerkstudent(?:in)?\b",
-        r"\bintern\b",
-        r"\binternship\b",
-        r"\bpraktikum\b",
-        r"\bpart[- ]time\b",
-        r"\bteilzeit\b",
-        r"\bminijob\b",
-        r"\bstudent assistant\b",
-        r"\bstudentische aushilfe\b",
-        r"\bstudentische hilfskraft\b",
-        r"\bmaster thesis\b",
-        r"\bthesis\b",
-        r"\babschlussarbeit\b",
-    ]
-
-    return any(
-        re.search(pattern, combined)
-        for pattern in allowed_patterns
-    )
-
-
-# Hard rule: no ordinary full-time jobs anymore.
-all_matches = [
-    job for job in all_matches
-    if keep_non_fulltime_job(job)
-]
-
-
-side_jobs = []
-
-try:
-    side_jobs.extend(fetch_jobmensa_jobs())
-except Exception as error:
-    print("Jobmensa error:", error)
-
-try:
-    side_jobs.extend(fetch_studentjob_jobs())
-except Exception as error:
-    print("StudentJob error:", error)
-
-try:
-    side_jobs.extend(fetch_linkedin_admin_jobs())
-except Exception as error:
-    print("LinkedIn Admin error:", error)
-
-try:
-    side_jobs.extend(fetch_infineon_student_jobs())
-except Exception as error:
-    print("Infineon Student error:", error)
-
-
-# Hard rule for side jobs too: keep only student / internship / part-time / minijob.
-side_jobs = [
-    job for job in side_jobs
-    if keep_non_fulltime_job(job)
-]
-
-
-
-print("\n===================================")
-print("🎯 CV-MATCHED JOBS")
-print("===================================\n")
-
-for job in all_matches:
-    print("-" * 60)
-    print("🎯 CV Match:", str(job.get("score", 0)) + "%")
-    print("🏢 Company:", job["company"])
-    print("💼 Title:", job["title"])
-    print("📍 Location:", job["location"])
-    print("⏱ Type:", job["type"])
-    print("✅ Skills:", ", ".join(job.get("matched_skills", [])))
-
-    breakdown = job.get("breakdown", {})
-
-    print(
-        "📊 Breakdown:",
-        "AI", str(breakdown.get("ai", 0)) + "/30 |",
-        "Skills", str(breakdown.get("skills", 0)) + "/35 |",
-        "Student", str(breakdown.get("student", 0)) + "/15 |",
-        "Location", str(breakdown.get("location", 0)) + "/10 |",
-        "Education", str(breakdown.get("education", 0)) + "/10"
-    )
-
-    print("🔗 URL:", job["url"])
-
-print("\n===================================")
-print("🔎 CHECKING FOR NEW JOBS")
-print("===================================\n")
-
-new_jobs = []
 
 def source_is_initialized(source_name):
     if use_supabase():
@@ -1699,8 +564,7 @@ def source_is_initialized(source_name):
             return len(r.json()) > 0
 
         except Exception as error:
-            print("Supabase source_is_initialized error:", error)
-            return False
+            raise RuntimeError("Could not read source initialization state") from error
 
     connection = sqlite3.connect(DB_NAME)
 
@@ -1732,8 +596,7 @@ def mark_source_initialized(source_name):
             return
 
         except Exception as error:
-            print("Supabase mark_source_initialized error:", error)
-            return
+            raise RuntimeError("Could not persist source initialization state") from error
 
     connection = sqlite3.connect(DB_NAME)
 
@@ -1750,87 +613,1178 @@ def mark_source_initialized(source_name):
     connection.close()
 
 
-for job in all_matches:
+def main():
+    import sys
+    from delivery import History
+    from discovery_cache import seed
+    from run_metrics import instrument_collectors, record_counts
+    instrument_collectors(globals())
+    if os.getenv("GITHUB_ACTIONS") == "true" and not use_supabase():
+        raise RuntimeError("Persistent database configuration is required in GitHub Actions")
+    init_database()
+    backend = sys.modules[__name__]
+    history = History(backend)
+    seed(history.ids)
 
-    if not job_exists(job["id"]):
+    all_matches = []
 
-        source_name = job.get("source", "Unknown")
+    for company_name, lever_id in COMPANIES.items():
 
-        if not source_is_initialized(source_name):
+        print(f"\nChecking {company_name}...")
 
-            print(
-                "🗃️ Initial sync:",
-                source_name,
-                "|",
-                job["company"],
-                "-",
-                job["title"]
-            )
+        url = f"https://api.lever.co/v0/postings/{lever_id}?mode=json"
 
-            save_job(job)
-            mark_source_initialized(source_name)
+        try:
+            response = requests.get(url, timeout=20)
+            response.raise_for_status()
 
-            continue
+            jobs = response.json()
 
-        print("🚨 NEW JOB FOUND!")
-        print(job["company"], "-", job["title"])
+            print(f"Total jobs: {len(jobs)}")
 
-        telegram_sent = send_telegram(job)
+            for job in jobs:
 
-        if telegram_sent:
-            save_job(job, alerted=True)
-            new_jobs.append(job)
-        else:
-            print(
-                "⚠️ Job not saved; Telegram will retry next run."
-            )
+                created_at = job.get("createdAt")
+
+                if created_at:
+                    try:
+                        created_dt = datetime.fromtimestamp(
+                            created_at / 1000,
+                            tz=timezone.utc
+                        )
+
+                        age = datetime.now(timezone.utc) - created_dt
+
+                        if age.total_seconds() > 24 * 3600:
+                            continue
+
+                    except Exception:
+                        continue
+
+                title = job.get("text", "")
+                title_lower = title.lower()
+
+                categories = job.get("categories", {})
+                location = categories.get("location", "")
+                commitment = categories.get("commitment", "")
+
+                if "working student" in title_lower or "werkstudent" in title_lower:
+                    commitment = "Working Student"
+                elif "internship" in title_lower or " intern" in title_lower:
+                    commitment = "Internship"
+                elif "junior" in title_lower or "graduate" in title_lower:
+                    commitment = "Junior"
+
+                description = job.get("descriptionPlain", "")
+
+                extra_parts = []
+
+                for section in job.get("lists", []):
+                    label = section.get("text", "")
+                    content = section.get("content", "")
+                    extra_parts.append(f"{label} {content}")
+
+                additional = job.get("additionalPlain", "")
+
+                full_description = (
+                    description
+                    + " "
+                    + " ".join(extra_parts)
+                    + " "
+                    + additional
+                )
+
+                location_lower = location.lower()
+
+                ai_match = any(
+                    keyword in title_lower
+                    for keyword in AI_TITLE_KEYWORDS
+                )
+
+                student_match = any(
+                    keyword in title_lower
+                    for keyword in STUDENT_TITLE_KEYWORDS
+                )
+
+                munich_match = any(
+                    place in location_lower
+                    for place in MUNICH_LOCATIONS
+                )
+
+                location_match = location_allowed(location)
+
+                if ai_match and student_match and location_match:
+
+                    score_text = f"{title} {full_description}"
+                    score, matched_skills, breakdown = calculate_cv_score(title, full_description, commitment, location)
+
+                    if score < minimum_score_for_job(title, commitment):
+                        continue
+                    all_matches.append({
+                        "id": job.get("id"),
+                        "company": company_name,
+                        "title": title,
+                        "location": location,
+                        "type": commitment,
+                        "url": job.get("hostedUrl"),
+                        "score": score,
+                        "matched_skills": matched_skills,
+                        "breakdown": breakdown,
+                        "source": company_name
+                    })
+
+        except Exception as error:
+            print("Error:", error)
 
 
-if not new_jobs:
-    print("✅ No new matching AI jobs.")
-
-
-new_side_jobs = []
-
-for job in side_jobs:
-
-    if job_exists(job["id"]):
-        continue
-
-    source_name = job.get(
-        "source",
-        "Jobmensa Side Jobs"
+    # Sort jobs by CV score
+    all_matches.sort(
+        key=lambda job: job.get("score", 0),
+        reverse=True
     )
 
-    if not source_is_initialized(source_name):
-        print(
-            "🗃️ Initial side-job sync:",
-            source_name
+
+    # -----------------------------------
+    # CHECK24
+    # -----------------------------------
+
+    try:
+        check24_jobs = fetch_check24_jobs()
+
+        for job in check24_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "CHECK24"
+                })
+
+    except Exception as error:
+        print("CHECK24 error:", error)
+
+
+
+    # -----------------------------------
+    # HAWK
+    # -----------------------------------
+
+    try:
+        hawk_jobs = fetch_hawk_jobs()
+
+        for job in hawk_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Hawk"
+                })
+
+    except Exception as error:
+        print("Hawk error:", error)
+
+
+
+    # -----------------------------------
+    # ASHBY AI COMPANIES
+    # -----------------------------------
+
+    try:
+        ashby_jobs = fetch_ashby_jobs()
+
+        for job in ashby_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Ashby"
+                })
+
+    except Exception as error:
+        print("Ashby error:", error)
+
+
+
+    # -----------------------------------
+    # NVIDIA DIRECT
+    # -----------------------------------
+
+    try:
+        nvidia_jobs = fetch_nvidia_jobs()
+
+        for job in nvidia_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "NVIDIA Direct Careers",
+                    "posted_at": job.get("date_posted", "")
+                })
+
+    except Exception as error:
+        print("NVIDIA error:", error)
+
+
+
+    # -----------------------------------
+    # YOURFIRM
+    # -----------------------------------
+
+    try:
+        yourfirm_jobs = fetch_yourfirm_jobs()
+
+        for job in yourfirm_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Yourfirm",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("Yourfirm error:", error)
+
+
+
+    # -----------------------------------
+    # HEYJOBS
+    # -----------------------------------
+
+    try:
+        heyjobs_jobs = fetch_heyjobs_jobs()
+
+        for job in heyjobs_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "HeyJobs",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("HeyJobs error:", error)
+
+
+
+    # -----------------------------------
+    # FRAUNHOFER DIRECT
+    # -----------------------------------
+
+    try:
+        fraunhofer_jobs = fetch_fraunhofer_jobs()
+
+        for job in fraunhofer_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Fraunhofer Direct Careers",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("Fraunhofer error:", error)
+
+
+
+    # -----------------------------------
+    # BMW DIRECT
+    # -----------------------------------
+
+    try:
+        bmw_jobs = fetch_bmw_jobs()
+
+        for job in bmw_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "BMW",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("BMW error:", error)
+
+
+
+
+    # -----------------------------------
+    # BOSCH DIRECT
+    # -----------------------------------
+
+    try:
+        bosch_jobs = fetch_bosch_jobs()
+
+        for job in bosch_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Bosch",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("Bosch error:", error)
+
+
+    # -----------------------------------
+    # MUNICH RE DIRECT
+    # -----------------------------------
+
+    try:
+        munichre_jobs = fetch_munichre_jobs()
+
+        for job in munichre_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Munich Re",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("Munich Re error:", error)
+
+
+    # -----------------------------------
+    # MERCEDES-BENZ DIRECT
+    # -----------------------------------
+
+    try:
+        mercedes_jobs = fetch_mercedes_jobs()
+
+        for job in mercedes_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Mercedes-Benz",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("Mercedes-Benz error:", error)
+
+
+    # -----------------------------------
+    # TECH LADIES
+    # -----------------------------------
+
+    try:
+        techladies_jobs = fetch_techladies_jobs()
+
+        for job in techladies_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Tech Ladies",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("Tech Ladies error:", error)
+
+
+    # -----------------------------------
+    # DEEPL DIRECT
+    # -----------------------------------
+
+    try:
+        deepl_jobs = fetch_deepl_jobs()
+
+        for job in deepl_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "DeepL",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("DeepL error:", error)
+
+
+    # -----------------------------------
+    # HELSING DIRECT
+    # -----------------------------------
+
+    try:
+        helsing_jobs = fetch_helsing_jobs()
+
+        for job in helsing_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Helsing",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("Helsing error:", error)
+
+
+    # -----------------------------------
+    # MISTRAL AI DIRECT
+    # -----------------------------------
+
+    try:
+        mistral_jobs = fetch_mistral_jobs()
+
+        for job in mistral_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Mistral AI",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("Mistral AI error:", error)
+
+
+    # -----------------------------------
+    # TACTO DIRECT
+    # -----------------------------------
+
+    try:
+        tacto_jobs = fetch_tacto_jobs()
+
+        for job in tacto_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Tacto",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("Tacto error:", error)
+
+
+    # -----------------------------------
+    # APPLIEDAI DIRECT
+    # -----------------------------------
+
+    try:
+        appliedai_jobs = fetch_appliedai_jobs()
+
+        for job in appliedai_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "appliedAI",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("appliedAI error:", error)
+
+
+    # -----------------------------------
+    # CELONIS DIRECT
+    # -----------------------------------
+
+    try:
+        celonis_jobs = fetch_celonis_jobs()
+
+        for job in celonis_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Celonis",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("Celonis error:", error)
+
+
+    # -----------------------------------
+    # INFINEON DIRECT
+    # -----------------------------------
+
+    try:
+        infineon_jobs = fetch_infineon_jobs()
+
+        for job in infineon_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Infineon",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("Infineon error:", error)
+
+
+
+
+    # -----------------------------------
+    # SAP DIRECT
+    # -----------------------------------
+
+    try:
+        sap_jobs = fetch_sap_jobs()
+
+        for job in sap_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "SAP",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("SAP error:", error)
+
+
+
+
+    # -----------------------------------
+    # SIEMENS DIRECT
+    # -----------------------------------
+
+    try:
+        siemens_jobs = fetch_siemens_jobs()
+
+        for job in siemens_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Siemens",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("Siemens error:", error)
+
+
+
+    # -----------------------------------
+    # SIEMENS ENERGY DIRECT
+    # -----------------------------------
+
+    try:
+        siemens_energy_jobs = fetch_siemens_energy_jobs()
+
+        for job in siemens_energy_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Siemens Energy",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("Siemens Energy error:", error)
+
+
+
+
+    # -----------------------------------
+    # ALLIANZ DIRECT
+    # -----------------------------------
+
+    try:
+        allianz_jobs = fetch_allianz_jobs()
+
+        for job in allianz_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "Allianz",
+                    "posted_at": job.get("posted_at", "")
+                })
+
+    except Exception as error:
+        print("Allianz error:", error)
+
+
+
+    # -----------------------------------
+    # LINKEDIN DISCOVERY
+    # -----------------------------------
+
+    try:
+        linkedin_jobs = fetch_linkedin_jobs()
+
+        for job in linkedin_jobs:
+
+            score, matched_skills, breakdown = calculate_cv_score(
+                job["title"],
+                job["description"],
+                job["type"],
+                job["location"]
+            )
+
+            if score >= minimum_score_for_job(
+                job["title"],
+                job["type"]
+            ):
+                all_matches.append({
+                    "id": job["id"],
+                    "company": job["company"],
+                    "title": job["title"],
+                    "location": job["location"],
+                    "type": job["type"],
+                    "url": job["url"],
+                    "score": score,
+                    "matched_skills": matched_skills,
+                    "breakdown": breakdown,
+                    "source": "LinkedIn"
+                })
+
+    except Exception as error:
+        print("LinkedIn error:", error)
+
+
+
+    def keep_non_fulltime_job(job):
+        title = str(job.get("title", "")).lower()
+        job_type = str(job.get("type", "")).lower()
+        combined = f"{title} {job_type}"
+
+        allowed_patterns = [
+            r"\bworking student\b",
+            r"\bwerkstudent(?:in)?\b",
+            r"\bintern\b",
+            r"\binternship\b",
+            r"\bpraktikum\b",
+            r"\bpart[- ]time\b",
+            r"\bteilzeit\b",
+            r"\bminijob\b",
+            r"\bstudent assistant\b",
+            r"\bstudentische aushilfe\b",
+            r"\bstudentische hilfskraft\b",
+            r"\bmaster thesis\b",
+            r"\bthesis\b",
+            r"\babschlussarbeit\b",
+        ]
+
+        return any(
+            re.search(pattern, combined)
+            for pattern in allowed_patterns
         )
-        save_job(job)
-        mark_source_initialized(source_name)
-        continue
 
-    print("🟢 NEW ENGLISH SIDE JOB!")
-    print(job["company"], "-", job["title"])
 
-    telegram_sent = send_side_job_telegram(job)
+    # Hard rule: no ordinary full-time jobs anymore.
+    all_matches = [
+        job for job in all_matches
+        if keep_non_fulltime_job(job)
+    ]
 
-    if telegram_sent:
-        save_job(job, alerted=True)
-        new_side_jobs.append(job)
-    else:
+
+    side_jobs = []
+
+    try:
+        side_jobs.extend(fetch_jobmensa_jobs())
+    except Exception as error:
+        print("Jobmensa error:", error)
+
+    try:
+        side_jobs.extend(fetch_studentjob_jobs())
+    except Exception as error:
+        print("StudentJob error:", error)
+
+    try:
+        side_jobs.extend(fetch_linkedin_admin_jobs())
+    except Exception as error:
+        print("LinkedIn Admin error:", error)
+
+    try:
+        side_jobs.extend(fetch_infineon_student_jobs())
+    except Exception as error:
+        print("Infineon Student error:", error)
+
+
+    # Hard rule for side jobs too: keep only student / internship / part-time / minijob.
+    side_jobs = [
+        job for job in side_jobs
+        if keep_non_fulltime_job(job)
+    ]
+
+
+
+    print("\n===================================")
+    print("🎯 CV-MATCHED JOBS")
+    print("===================================\n")
+
+    for job in all_matches:
+        print("-" * 60)
+        print("🎯 CV Match:", str(job.get("score", 0)) + "%")
+        print("🏢 Company:", job["company"])
+        print("💼 Title:", job["title"])
+        print("📍 Location:", job["location"])
+        print("⏱ Type:", job["type"])
+        print("✅ Skills:", ", ".join(job.get("matched_skills", [])))
+
+        breakdown = job.get("breakdown", {})
+
         print(
-            "⚠️ Side job not saved; Telegram will retry next run."
+            "📊 Breakdown:",
+            "AI", str(breakdown.get("ai", 0)) + "/30 |",
+            "Skills", str(breakdown.get("skills", 0)) + "/35 |",
+            "Student", str(breakdown.get("student", 0)) + "/15 |",
+            "Location", str(breakdown.get("location", 0)) + "/10 |",
+            "Education", str(breakdown.get("education", 0)) + "/10"
         )
 
+        print("🔗 URL:", job["url"])
 
-if not new_side_jobs:
-    print("✅ No new English side jobs.")
+    print("\n===================================")
+    print("🔎 CHECKING FOR NEW JOBS")
+    print("===================================\n")
+
+    new_jobs = []
 
 
-print("-----------------------------------")
-print("Matching AI jobs:", len(all_matches))
-print("New AI jobs:", len(new_jobs))
-print("Fresh English side jobs:", len(side_jobs))
-print("New English side jobs:", len(new_side_jobs))
+
+    from delivery import deliver_batch
+    initialized = {}
+    new_jobs = deliver_batch(all_matches, send_telegram, initialized, backend, history)
+    new_side_jobs = deliver_batch(side_jobs, send_side_job_telegram, initialized, backend, history)
+    for source_name, was_initialized in initialized.items():
+        if not was_initialized:
+            mark_source_initialized(source_name)
+    print("Matching AI jobs:", len(all_matches))
+    print("New AI jobs:", len(new_jobs))
+    print("Fresh English side jobs:", len(side_jobs))
+    print("New English side jobs:", len(new_side_jobs))
+    record_counts(ai_matches=len(all_matches), ai_sent=len(new_jobs), side_matches=len(side_jobs), side_sent=len(new_side_jobs))
+
+
+if __name__ == "__main__":
+    from run_metrics import start
+    start()
+    main()

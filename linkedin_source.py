@@ -75,15 +75,8 @@ AI_TERMS = [
 
 
 def extract_job_id(url):
-    match = re.search(
-        r"-(\d+)(?:\?|$)",
-        url
-    )
-
-    if match:
-        return match.group(1)
-
-    return None
+    match = re.search(r"/jobs/view/(?:[^/?]*-)?(\d+)(?:/|[?#]|$)", url)
+    return match.group(1) if match else None
 
 
 def fetch_job_description(job_id):
@@ -144,10 +137,10 @@ def search_linkedin(
             "location": location,
             "sortBy": "DD",
 
-            # Use a 6-hour overlap window so delayed GitHub runs
+            # Use a 24-hour overlap window so delayed GitHub runs
             # or delayed LinkedIn indexing do not cause missed jobs.
             # Database deduplication prevents duplicate alerts.
-            "f_TPR": "r21600",
+            "f_TPR": "r86400",
 
             "start": start
         }
@@ -310,9 +303,15 @@ def fetch_linkedin_jobs():
             job["url"]
         )
 
-        description = fetch_job_description(
-            job_id
-        )
+        from discovery_cache import seen
+        if not job_id or seen("linkedin-" + job_id):
+            continue
+        # These titles are already rejected later; skip the detail request too.
+        if any(term in title_lower for term in ("senior", "principal", "head of", "director", "recruiter", "talent acquisition")):
+            continue
+        description = fetch_job_description(job_id)
+        if not description:
+            continue
 
         full_text = (
             f"{title} {description}"

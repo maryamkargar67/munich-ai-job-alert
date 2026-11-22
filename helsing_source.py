@@ -68,7 +68,7 @@ def clean_text(value):
     return " ".join(value.split())
 
 
-def is_fresh(first_published, max_age_minutes=180):
+def is_fresh(first_published, max_age_minutes=1440):
     try:
         dt = datetime.fromisoformat(
             first_published.replace("Z", "+00:00")
@@ -118,7 +118,7 @@ def is_early_career(title, job_type):
     return job_type == "Full-Time"
 
 
-def fetch_helsing_jobs(max_age_minutes=180):
+def fetch_helsing_jobs(max_age_minutes=1440):
     print("Checking Helsing Direct Careers...")
 
     r = requests.get(

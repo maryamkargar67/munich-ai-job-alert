@@ -78,55 +78,12 @@ def is_remote_germany(location, description=""):
     location_text = (location or "").lower().strip()
     description_text = (description or "").lower()
 
-    remote_terms = [
-        "remote",
-        "home office",
-        "homeoffice",
-        "work from home",
-        "fully remote"
-    ]
-
-    germany_terms = [
-        "germany",
-        "deutschland",
-        "german-wide",
-        "germany-wide"
-    ]
-
-    # Explicit Germany-wide remote wording in description
-    has_remote_in_description = any(
-        term in description_text
-        for term in remote_terms
-    )
-
-    has_germany_scope_in_description = any(
-        term in description_text
-        for term in germany_terms
-    )
-
-    if (
-        has_remote_in_description
-        and has_germany_scope_in_description
-    ):
+    # Hybrid benefits in a distant German office are not Germany-wide remote.
+    explicit = r"(?:fully|100\s*%|completely)\s+remote.{0,45}(?:germany|deutschland)|(?:germany|deutschland)[-\s]*(?:wide|weit).{0,25}remote|remote.{0,25}(?:anywhere\s+in\s+germany|innerhalb\s+deutschlands)|deutschlandweit.{0,25}(?:homeoffice|home.office)"
+    if re.search(explicit, description_text):
         return True
-
-    # Generic country-level location such as "Germany"
-    generic_germany_location = location_text in {
-        "germany",
-        "deutschland",
-        "remote germany",
-        "remote - germany",
-        "germany remote",
-        "remote, germany"
-    }
-
-    if generic_germany_location and (
-        has_remote_in_description
-        or "remote" in location_text
-    ):
-        return True
-
-    return False
+    generic = re.fullmatch(r"(?:remote[ ,–-]*)?(?:germany|deutschland)(?:[ ,–-]*remote)?", location_text)
+    return bool(generic and ("remote" in location_text or re.search(r"(?:fully|100\s*%|completely)\s+remote", description_text)))
 
 
 def extract_known_city(location):

@@ -1,6 +1,6 @@
 import re
 
-def requires_advanced_german(text):
+def _requires_advanced_german(text):
 
     allowed_basic_german_patterns = [
         r"\bdeutsch\s*\(\s*a1\s*\)",
@@ -155,3 +155,20 @@ def requires_advanced_german(text):
         re.search(pattern, text)
         for pattern in german_patterns
     )
+
+
+def requires_advanced_german(text):
+    # Keep English levels and optional German separate from mandatory German.
+    clauses = re.split(r"[,;\n!?]+|(?<!mind)\.(?!\d)|\bbut\b|\baber\b", str(text or "").lower())
+    for clause in clauses:
+        parts = re.split(r"\b(?:and|und)\s+(?!(?:english|englisch\w*)\b)", clause)
+        for part in parts:
+            if not re.search(r"\b(?:german|deutsch\w*)\b", part):
+                continue
+            if re.search(r"(?:not required|not mandatory|no german required|keine? deutschkenntnisse|nicht erforderlich|optional|a plus|nice.to.have|von vorteil|wünschenswert|wuenschenswert|advantageous|preferred)", part):
+                continue
+            part = re.sub(r"\b(?:english|englisch\w*)\s*(?:at\s+least\s+|level\s+|niveau\s+)?(?:b2|c1|c2)\b", "english", part)
+            part = re.sub(r"\b(?:at\s+least\s+)?(?:b2|c1|c2)\s+(?:english|englisch\w*)\b", "english", part)
+            if _requires_advanced_german(part):
+                return True
+    return False

@@ -172,7 +172,7 @@ def extract_description(detail):
     return " ".join(parts).strip()
 
 
-def fetch_bosch_jobs(max_age_minutes=180):
+def fetch_bosch_jobs(max_age_minutes=1440):
     print("Checking Bosch Direct Careers...")
 
     cutoff = datetime.now(timezone.utc) - timedelta(

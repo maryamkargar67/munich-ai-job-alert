@@ -90,7 +90,7 @@ def parse_published(html):
     return ""
 
 
-def is_fresh(published_at, max_age_minutes=180):
+def is_fresh(published_at, max_age_minutes=1440):
     if not published_at:
         return False
 
@@ -173,7 +173,7 @@ def is_suitable_level(title, description, job_type):
     return True
 
 
-def fetch_appliedai_jobs(max_age_minutes=180):
+def fetch_appliedai_jobs(max_age_minutes=1440):
     print("Checking appliedAI Direct Careers...")
 
     r = requests.get(
